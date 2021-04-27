@@ -9,6 +9,21 @@ using namespace std;
 #define facet2D pair<point2D, point2D>
 #define ridge2D point2D
 
+#define MAXSIZE 100000000
+
+int setMin(set<int> S) {
+    if (S.size() == 0) {
+        return MAXSIZE;
+    }
+    else {
+        return *S.begin();
+    }
+}
+
+int minSet(set<int> S) {
+    return setMin(S);
+}
+
 void printFacet2D(facet2D f) {
     int x1 = f.first.first;
     int x2 = f.second.first;
@@ -67,13 +82,15 @@ bool visible2D(point2D v, facet2D t) {
 }
 
 
-// TODO change to ordered set so can take min.
-map<facet2D, set<point2D>> C;
+// Map from facets to point indices.
+map<facet2D, set<int>> C;
 set<facet2D> H;
-set<ridge2D> H_ridges;
+map<ridge2D, pair<facet2D, facet2D>> H_ridges;
 // TODO change M as described in paper.
 map<ridge2D, pair<facet2D, facet2D>> M;
-
+point2D BAD1 = {420420420, -420420420};
+point2D BAD2 = {-420420420, 420420420};
+facet2D BAD = {BAD1, BAD2};
 /* InsertAndSet:
  *      Maintains a map R as a hash table
  *      using ridges as keys and values as ridge-facet pairs
@@ -82,8 +99,13 @@ map<ridge2D, pair<facet2D, facet2D>> M;
  * Output: If r is in M, return false.
  *      Otherwise, return true and map r to t in M.
 */
-void InsertAndSet(ridge2D r, facet2D t) {
-    return;
+bool InsertAndSet(ridge2D r, facet2D t) {
+    if (M.count(r) > 0) {
+        return false;
+    } else {
+        M.insert(pair<ridge2D, pair<facet2D, facet2D>>(r, {t, BAD}));
+        return true;
+    }
 }
 
 /* GetValue:
@@ -92,15 +114,98 @@ void InsertAndSet(ridge2D r, facet2D t) {
  * Output: A value t' associated with r in M 
  *         which is not t
 */
-void GetValue(ridge2D r, facet2D t) {
-    return;
+facet2D GetValue(ridge2D r, facet2D t) {
+    return M[r].first;
 }
 
-void ProcessRidge(facet2D t1, ridge2D r, facet2D t2) {
+void ProcessRidge(facet2D t1, ridge2D r, facet2D t2, point2D* points) {
+    cout << "Processing Ridge(t1,r,t2)" << std::endl;
+    cout << "t1=\t";
+    printFacet2D(t1);
+    cout << "r=\t";
+    printPoint2D(r);
+    cout << "t2=\t";
+    printFacet2D(t2);
+        
+    // If both are emtpy then this is a final facet!
     if (C[t1].size() == 0 && C[t2].size() == 0) {
+        cout << "Final facets found" << std::endl;
         return;
     }
-    //minstuff
+    // If just one is empty, this means just one is final.
+    /*else if (C[t1].size() == 0 && C[t2].size() != 0) {
+        ProcessRidge(t2, r, t1, points);
+    }
+    else if (C[t1].size() != 0 && C[t2].size() == 0) {
+        cout << "AHHHHH" << std::endl;
+    }*/
+    // ABOVE IS OUTDATED DUE TO MAXSIZE UPDATE
+    // If covered by the same point, then we delete them
+    else if (minSet(C[t2]) == minSet(C[t1])) {
+        //DELETE t1 and t2 from H
+        H.erase(t1);
+        H.erase(t2);
+        cout << "Deleting facets" << std::endl;
+    }
+    // Changing order so that minSet(C[t1]) < minSet(C[t2])
+    else if (minSet(C[t2]) < minSet(C[t1])) {
+        ProcessRidge(t2, r, t1, points);
+    }
+    // Otherwise we know that -1 < minSet(C[t1]) < minSet(C[t2])
+    else {
+        cout << "branching" << std::endl;
+        point2D p = points[minSet(C[t1])];
+        facet2D t = {r, p};
+        if (visible2D(points[0], t)) {
+            t = facetSwap(t);
+        }
+        //Create C[t]
+        set<int> new_set;
+        C[t] = new_set; 
+        for (auto it = C[t1].begin(); it != C[t1].end(); ++it) {
+            int i = *it;
+            point2D v = points[i];
+            if (visible2D(v, t)) {
+                C[t].insert(i);
+            }
+        }
+        for (auto it = C[t2].begin(); it != C[t2].end(); ++it) {
+            int i = *it;
+            point2D v = points[i];
+            if (C[t].find(i) == C[t].end() && visible2D(v, t)) {
+                C[t].insert(i);
+            }
+        }
+        // delete t1 and add t
+        H.erase(t1);
+        H.insert(t);
+        //In 2D only two points on the boundary but can still be split into tasks
+        ridge2D r1;
+        ridge2D r2;
+        r1 = t.first;
+        r2 = t.second;
+        //task
+        {
+            if (r1 == r) {
+                ProcessRidge(t, r, t2, points);
+            }
+            else if (!InsertAndSet(r1, t)) {
+                facet2D s = GetValue(r1, t);
+                ProcessRidge(t, r1, s, points);
+            }
+        }
+        //task
+        {
+            if (r2 == r) {
+                ProcessRidge(t, r, t2, points);
+            }
+            else if (!InsertAndSet(r2, t)) {
+                facet2D s = GetValue(r2, t);
+                ProcessRidge(t, r2, s, points);
+            }
+        }
+    }
+    
 }
 
 int convexHull2D(point2D* points, int size, point2D* output) {
@@ -122,7 +227,6 @@ int convexHull2D(point2D* points, int size, point2D* output) {
         } else {
             H.insert({points[i % 3], points[(i+1) % 3]});
         }
-        H_ridges.insert(points[i]);
     }
     for (int i = 0; i < 3; i++) {
         facet2D f1 = {points[i], points[(i+1) % 3]};
@@ -133,29 +237,30 @@ int convexHull2D(point2D* points, int size, point2D* output) {
         if (H.find(f2) == H.end()) {
             f2 = facetSwap(f2);
         }
-        M.insert(pair<point2D, pair<facet2D, facet2D>>(points[i], {f1, f2}));
+        H_ridges.insert(pair<point2D, pair<facet2D, facet2D>>(points[i], {f1, f2}));
     }
     
     // parallel foreach t in H do
     for (auto it = H.begin(); it != H.end(); ++it) {
         // C(t) <- {v in V | visible(v, t)}
         facet2D t = *it;
-        set<point2D> S_new;
+        set<int> S_new;
         C[t] = S_new;
         // parallel foreach v in V
-        for (int i = 0; i++; i < size) {
+        for (int i = 3; i < size; i++) {
             point2D v = points[i];
             if (visible2D(v, t)) {
-                (C[t]).insert(v);
+                (C[t]).insert(i);
             }
         }
+        //cout << C[t].size() << std::endl;
     }
     // parallel for each t1,t2 sharing ridge r
     for (auto it = H_ridges.begin(); it != H_ridges.end(); ++it) {
-        ridge2D r = *it;
-        facet2D t1 = M[r].first;
-        facet2D t2 = M[r].second;
-        //ProcessRidge();
+        ridge2D r = it->first;
+        facet2D t1 = (it->second).first;
+        facet2D t2 = (it->second).second;
+        ProcessRidge(t1, r, t2, points);
     }
 
     cout << "Final Hull" << std::endl;
@@ -171,7 +276,7 @@ int main()
     points[1]= {100, 0};
     points[2] = {0, 50};
     points[3] = {1, 60};
-    points[4] = {33, 37};
+    points[4] = {2, 71};
     points[5] = {0, 100};
     points[6] = {60, 80};
     points[7] = {80, 60};
