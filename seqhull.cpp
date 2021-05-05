@@ -3,18 +3,20 @@
 #include <utility>
 #include <set>
 #include <map>
+#include "seqhull.h"
 using namespace std;
-
 #define point2D pair<int, int>
 #define facet2D pair<point2D, point2D>
 #define ridge2D point2D
 
+namespace Sequential2DCH {
+  
 void printFacet2D(facet2D f) {
     int x1 = f.first.first;
     int x2 = f.second.first;
     int y1 = f.first.second;
     int y2 = f.second.second;
-    cout << "(" << x1 << ", " << y1 << ") -> (" 
+    cout << "(" << x1 << ", " << y1 << ") -> ("
          << x2 << ", " << y2 << ")" << std::endl;
 }
 
@@ -55,7 +57,7 @@ facet2D facetSwap(facet2D f) {
 bool visible2D(point2D v, facet2D t) {
     point2D p1 = t.first;
     point2D p2 = t.second;
-    
+
     int a = p2.first - p1.first;
     int b  = p2.second - p1.second;
     int c = v.first - p1.first;
@@ -66,7 +68,7 @@ bool visible2D(point2D v, facet2D t) {
     return cross_product > 0;
 }
 
-int convexHull2D(point2D* points, int size, point2D* output) {
+int convexHull2D(point2D* points, int size, point2D* output, bool debug) {
     if (size < 0) {
         cout << "Size must be nonnegative" << std::endl;
         return -1;
@@ -99,8 +101,10 @@ int convexHull2D(point2D* points, int size, point2D* output) {
         }
         ridge_facets.insert(pair<point2D, pair<facet2D, facet2D>>(points[i], {f1, f2}));
     }
-    cout << "Starting Hull" << std::endl;
-    printFacetSet2D(H);
+    if (debug) {
+      cout << "Starting Hull" << std::endl;
+      printFacetSet2D(H);
+    }
     // Initialize conflicting visible points map
     map<facet2D, set<point2D>> C;
     map<point2D, set<facet2D>> C_inv;
@@ -219,33 +223,15 @@ int convexHull2D(point2D* points, int size, point2D* output) {
         //    printFacet2D(*h_itr);
         //    printPointSet2D(C[*h_itr]);
         //}
-        cout << "Hull " << i << std::endl;
-        printFacetSet2D(H);
+        if (debug) {
+          cout << "Hull " << i << std::endl;
+          printFacetSet2D(H);
+        }
     }
+
     cout << "Final Hull" << std::endl;
     printFacetSet2D(H);
     return size;
 }
 
-int main()
-{
-    int size = 8;
-    point2D points[size];
-    points[0] = {-100, 0};
-    points[1]= {100, 0};
-    points[2] = {0, 50};
-    points[3] = {1, 60};
-    points[4] = {33, 37};
-    points[5] = {0, 100};
-    points[6] = {60, 80};
-    points[7] = {80, 60};
-    cout << "Input size: " << size << std::endl;
-    printPoints2D(points, size);
-    point2D* hull = (point2D*)calloc(size, sizeof(point2D));
-    int hull_size = convexHull2D(points, size, hull);
-    //if (hull_size > 0) {
-    //    cout << "Output size: " << hull_size << std::endl;
-    //    printPoints2D(hull, hull_size);
-    //}
-    return 0;
 }
