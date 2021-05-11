@@ -172,7 +172,11 @@ int convexHull2D(point2D* points, int size, point2D* output, bool debug) {
                 f2 = swap;
             }
             facet2D new_f = {r, p};
-            if (visible2D(points[0], new_f)) {
+            point2D q = f1.first;
+            if (p == q) {
+                q = f1.second;
+            }
+            if (visible2D(q, new_f)) {
                 new_f = facetSwap(new_f);
             }
             // Update everything to include new facet and erase old one.

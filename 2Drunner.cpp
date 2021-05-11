@@ -16,7 +16,7 @@ int main(int argc, char** argv)
     for (int i = 0; i < size; i++) {
       std::cin >> points[i].first >> points[i].second;
     }
-    Sequential2DCH::printPoints2D(points, size);
+    //Sequential2DCH::printPoints2D(points, size);
     point2D *hull = new point2D[size];
     auto start = std::chrono::high_resolution_clock::now();
     int hull_size = Sequential2DCH::convexHull2D(points, size, hull, debug);

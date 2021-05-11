@@ -3,6 +3,9 @@
 #include <utility>
 #include <set>
 #include <map>
+#include <mutex>
+#include <cilk/cilk.h>
+#include <cilk/cilk_api.h>
 using namespace std;
 
 #define point2D pair<int, int>
@@ -85,6 +88,9 @@ bool visible2D(point2D v, facet2D t) {
 // Map from facets to point indices.
 map<facet2D, set<int>> C;
 set<facet2D> H;
+std::mutex H_lock;
+std::mutex C_lock;
+std::mutex M_lock;
 map<ridge2D, pair<facet2D, facet2D>> H_ridges;
 // TODO change M as described in paper.
 map<ridge2D, pair<facet2D, facet2D>> M;
@@ -103,7 +109,10 @@ bool InsertAndSet(ridge2D r, facet2D t) {
     if (M.count(r) > 0) {
         return false;
     } else {
+        // TODO(Sylvia) change the sync of M as needed
+        M_lock.lock();
         M.insert(pair<ridge2D, pair<facet2D, facet2D>>(r, {t, BAD}));
+        M_lock.unlock();
         return true;
     }
 }
@@ -119,17 +128,17 @@ facet2D GetValue(ridge2D r, facet2D t) {
 }
 
 void ProcessRidge(facet2D t1, ridge2D r, facet2D t2, point2D* points) {
-    cout << "Processing Ridge(t1,r,t2)" << std::endl;
-    cout << "t1=\t";
-    printFacet2D(t1);
-    cout << "r=\t";
-    printPoint2D(r);
-    cout << "t2=\t";
-    printFacet2D(t2);
+    //cout << "Processing Ridge(t1,r,t2)" << std::endl;
+    //cout << "t1=\t";
+    //printFacet2D(t1);
+    //cout << "r=\t";
+    //printPoint2D(r);
+    //cout << "t2=\t";
+    //printFacet2D(t2);
         
     // If both are emtpy then this is a final facet!
     if (C[t1].size() == 0 && C[t2].size() == 0) {
-        cout << "Final facets found" << std::endl;
+        //cout << "Final facets found" << std::endl;
         return;
     }
     // If just one is empty, this means just one is final.
@@ -143,42 +152,53 @@ void ProcessRidge(facet2D t1, ridge2D r, facet2D t2, point2D* points) {
     // If covered by the same point, then we delete them
     else if (minSet(C[t2]) == minSet(C[t1])) {
         //DELETE t1 and t2 from H
+        H_lock.lock();
         H.erase(t1);
         H.erase(t2);
-        cout << "Deleting facets" << std::endl;
+        //cout << "Deleting facets" << std::endl;
+        H_lock.unlock();
     }
     // Changing order so that minSet(C[t1]) < minSet(C[t2])
     else if (minSet(C[t2]) < minSet(C[t1])) {
-        ProcessRidge(t2, r, t1, points);
+        cilk_spawn ProcessRidge(t2, r, t1, points);
     }
     // Otherwise we know that -1 < minSet(C[t1]) < minSet(C[t2])
     else {
-        cout << "branching" << std::endl;
+        //cout << "branching" << std::endl;
         point2D p = points[minSet(C[t1])];
         facet2D t = {r, p};
-        if (visible2D(points[0], t)) {
+        point2D q = t1.first;
+        if (p == q) {
+            q = t1.second;
+        }
+        if (visible2D(q, t)) {
             t = facetSwap(t);
         }
         //Create C[t]
         set<int> new_set;
+        // TODO(Sylvia): Is this C locking scheme correct? (concurrency specs of C++)
+        C_lock.lock();
         C[t] = new_set; 
+        C_lock.unlock();
         for (auto it = C[t1].begin(); it != C[t1].end(); ++it) {
             int i = *it;
             point2D v = points[i];
             if (visible2D(v, t)) {
-                C[t].insert(i);
+                C.at(t).insert(i);
             }
         }
         for (auto it = C[t2].begin(); it != C[t2].end(); ++it) {
             int i = *it;
             point2D v = points[i];
-            if (C[t].find(i) == C[t].end() && visible2D(v, t)) {
-                C[t].insert(i);
+            if (C.at(t).find(i) == C.at(t).end() && visible2D(v, t)) {
+                C.at(t).insert(i);
             }
         }
         // delete t1 and add t
+        H_lock.lock();
         H.erase(t1);
         H.insert(t);
+        H_lock.unlock();
         //In 2D only two points on the boundary but can still be split into tasks
         ridge2D r1;
         ridge2D r2;
@@ -187,21 +207,21 @@ void ProcessRidge(facet2D t1, ridge2D r, facet2D t2, point2D* points) {
         //task
         {
             if (r1 == r) {
-                ProcessRidge(t, r, t2, points);
+                cilk_spawn ProcessRidge(t, r, t2, points);
             }
             else if (!InsertAndSet(r1, t)) {
                 facet2D s = GetValue(r1, t);
-                ProcessRidge(t, r1, s, points);
+                cilk_spawn ProcessRidge(t, r1, s, points);
             }
         }
         //task
         {
             if (r2 == r) {
-                ProcessRidge(t, r, t2, points);
+                cilk_spawn ProcessRidge(t, r, t2, points);
             }
             else if (!InsertAndSet(r2, t)) {
                 facet2D s = GetValue(r2, t);
-                ProcessRidge(t, r2, s, points);
+                cilk_spawn ProcessRidge(t, r2, s, points);
             }
         }
     }
@@ -270,6 +290,7 @@ int convexHull2D(point2D* points, int size, point2D* output) {
 
 int main()
 {
+    /*
     int size = 8;
     point2D points[size];
     points[0] = {-100, 0};
@@ -280,10 +301,25 @@ int main()
     points[5] = {0, 100};
     points[6] = {60, 80};
     points[7] = {80, 60};
+    
     cout << "Input size: " << size << std::endl;
     printPoints2D(points, size);
     point2D* hull = (point2D*)calloc(size, sizeof(point2D));
+    */
+    __cilkrts_set_param("nworkers", "4");
+    int size = 0;
+    std::cin >> size;
+    point2D *points = new point2D[size];
+    for (int i = 0; i < size; i++) {
+      std::cin >> points[i].first >> points[i].second;
+    }
+    //printPoints2D(points, size);
+    point2D *hull = new point2D[size];
+    auto start = std::chrono::high_resolution_clock::now();
     int hull_size = convexHull2D(points, size, hull);
+    auto stop = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
+    std::cout << "Parallel execution on size " << size << " dataset took " << duration.count() << " microseconds" << std::endl;
     //if (hull_size > 0) {
     //    cout << "Output size: " << hull_size << std::endl;
     //    printPoints2D(hull, hull_size);
