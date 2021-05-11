@@ -156,7 +156,11 @@ void ProcessRidge(facet2D t1, ridge2D r, facet2D t2, point2D* points) {
         cout << "branching" << std::endl;
         point2D p = points[minSet(C[t1])];
         facet2D t = {r, p};
-        if (visible2D(points[0], t)) {
+        point2D q = t1.first;
+        if (p == q) {
+            q = t1.second;
+        }
+        if (visible2D(q, t)) {
             t = facetSwap(t);
         }
         //Create C[t]
