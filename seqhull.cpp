@@ -113,7 +113,7 @@ int convexHull2D(point2D* points, int size, point2D* output, bool debug) {
         point2D p = points[i];
         C_inv.insert(pair<point2D, set<facet2D>>(p, {}));
     }
-    for (itr = H.begin(); itr != H.end(); itr++) {
+    for (itr = H.begin(); itr != H.end(); ++itr) {
         facet2D f = *itr;
         C.insert(pair<facet2D, set<point2D>>(f, {}));
         for (int i = 0; i < size; i++) {

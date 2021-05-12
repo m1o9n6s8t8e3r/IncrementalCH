@@ -6,6 +6,7 @@
 #include <map>
 #include <mutex>
 #include <vector>
+#include <algorithm>
 #include <cilk/cilk.h>
 #include <cilk/cilk_api.h>
 using namespace std;
@@ -15,6 +16,20 @@ using namespace std;
 #define ridge2D point2D
 
 #define MAXSIZE 100000000
+
+void par_quick_sort(std::vector<int>::iterator beg, std::vector<int>::iterator end);
+void par_quick_sort(std::vector<int>::iterator beg, std::vector<int>::iterator end) {
+    if (beg < end) {
+		end--;
+        auto pivot = partition(beg, end, bind2nd(std::less<int>(), *end));
+        std::swap(*end, *pivot);
+        cilk_spawn par_quick_sort(beg, pivot);
+        pivot++;
+        end++;
+        par_quick_sort(pivot, end);
+		cilk_sync;
+    }
+}
 
 int setMin(set<int> S) {
     if (S.size() == 0) {
@@ -111,13 +126,12 @@ facet2D BAD = {BAD1, BAD2};
  *      Otherwise, return true and map r to t in M.
 */
 bool InsertAndSet(ridge2D r, facet2D t) {
-    if (M.count(r) > 0) {
+	int count = M.count(r);
+    if (count > 0) {
         return false;
     } else {
         // TODO(Sylvia) change the sync of M as needed
-        M_lock.lock();
         M.insert(pair<ridge2D, pair<facet2D, facet2D>>(r, {t, BAD}));
-        M_lock.unlock();
         return true;
     }
 }
@@ -129,7 +143,8 @@ bool InsertAndSet(ridge2D r, facet2D t) {
  *         which is not t
 */
 facet2D GetValue(ridge2D r, facet2D t) {
-    return M[r].first;
+	facet2D ret = M[r].first;
+    return ret;
 }
 
 void ProcessRidge(facet2D t1, ridge2D r, facet2D t2, point2D* points) {
@@ -165,7 +180,7 @@ void ProcessRidge(facet2D t1, ridge2D r, facet2D t2, point2D* points) {
     }
     // Changing order so that minSet(C[t1]) < minSet(C[t2])
     else if (minSet(C[t2]) < minSet(C[t1])) {
-        cilk_spawn ProcessRidge(t2, r, t1, points);
+        ProcessRidge(t2, r, t1, points);
     }
     // Otherwise we know that -1 < minSet(C[t1]) < minSet(C[t2])
     else {
@@ -214,6 +229,8 @@ void ProcessRidge(facet2D t1, ridge2D r, facet2D t2, point2D* points) {
 		//for (int i = 0; i < t1_new.size(); i++) std::cout << t1_new[i] << ", ";
 		//std::cout << std::endl;
 		sort(t1_new.begin(), t1_new.end());
+		// Parllel fdsoert!!
+		//par_quick_sort(t1_new.begin(), t1_new.end());
 		//for (int i = 0; i < t1_new.size(); i++) std::cout << t1_new[i] << ", ";
 		//std::cout << std::endl;
 		t1_new.erase(unique(t1_new.begin(), t1_new.end()), t1_new.end());
@@ -238,21 +255,31 @@ void ProcessRidge(facet2D t1, ridge2D r, facet2D t2, point2D* points) {
         {
             if (r1 == r) {
                 cilk_spawn ProcessRidge(t, r, t2, points);
-            }
-            else if (!InsertAndSet(r1, t)) {
-                facet2D s = GetValue(r1, t);
-                cilk_spawn ProcessRidge(t, r1, s, points);
+            } else {
+				M_lock.lock();
+				if (!InsertAndSet(r1, t)) {
+                	facet2D s = GetValue(r1, t);
+					M_lock.unlock();
+                	cilk_spawn ProcessRidge(t, r1, s, points);
+				} else {
+					M_lock.unlock();
+				}
             }
         }
         //task
         {
             if (r2 == r) {
-                cilk_spawn ProcessRidge(t, r, t2, points);
-            }
-            else if (!InsertAndSet(r2, t)) {
-                facet2D s = GetValue(r2, t);
-                cilk_spawn ProcessRidge(t, r2, s, points);
-            }
+                ProcessRidge(t, r, t2, points);
+            } else {
+				M_lock.lock();
+				if (!InsertAndSet(r2, t)) {
+                	facet2D s = GetValue(r2, t);
+					M_lock.unlock();
+                	ProcessRidge(t, r2, s, points);
+            	} else {
+					M_lock.unlock();
+				}
+			}
         }
     }
     
