@@ -1,9 +1,11 @@
 //Two dimensional version
 #include <iostream>
+#include <bits/stdc++.h>
 #include <utility>
 #include <set>
 #include <map>
 #include <mutex>
+#include <vector>
 #include <cilk/cilk.h>
 #include <cilk/cilk_api.h>
 using namespace std;
@@ -23,8 +25,11 @@ int setMin(set<int> S) {
     }
 }
 
-int minSet(set<int> S) {
-    return setMin(S);
+int minSet(vector<int> S) {
+    //return setMin(S);
+    if (S.size() == 0)
+        return MAXSIZE;
+    return S[0];
 }
 
 void printFacet2D(facet2D f) {
@@ -86,7 +91,7 @@ bool visible2D(point2D v, facet2D t) {
 
 
 // Map from facets to point indices.
-map<facet2D, set<int>> C;
+map<facet2D, vector<int>> C;
 set<facet2D> H;
 std::mutex H_lock;
 std::mutex C_lock;
@@ -167,6 +172,7 @@ void ProcessRidge(facet2D t1, ridge2D r, facet2D t2, point2D* points) {
         //cout << "branching" << std::endl;
         point2D p = points[minSet(C[t1])];
         facet2D t = {r, p};
+        //printFacet2D(t);
         point2D q = t1.first;
         if (p == q) {
             q = t1.second;
@@ -175,25 +181,49 @@ void ProcessRidge(facet2D t1, ridge2D r, facet2D t2, point2D* points) {
             t = facetSwap(t);
         }
         //Create C[t]
-        set<int> new_set;
+		C_lock.lock();
+		vector<int> t1_set = C[t1];
+		vector<int> t2_set = C[t2];
+		C_lock.unlock();
+		vector<int> t1_new = vector<int>();
+		t1_new.resize(t1_set.size() + t2_set.size());
+		std::fill(t1_new.begin(), t1_new.end(), -1);
+		//vector<int> t2_new = vector<int>();
+		//t2_new.resize(t2_set.size());
+        //std::cout << "Starting filter" <<std::endl;
+		for (int i = 0; i < t1_set.size(); i++) {
+		    if (visible2D(points[t1_set[i]], t)) {
+			    t1_new[i] = t1_set[i];
+		    }
+            //std::cout << t1_new[i] <<", ";
+		}
+		//std::cout << std::endl;	
+		for (int i = t1_set.size(); i < t1_set.size() + t2_set.size(); i++) {
+		    if (visible2D(points[t2_set[i - t1_set.size()]], t)) {
+			    t1_new[i] = t2_set[i - t1_set.size()];
+		    }
+			//std::cout << t1_new[i] << ", ";
+		}
+		//for (int i = t1_set.size(); i < t1_set.size() + t2_set.size(); i++) {
+		//    if (visible2D(points[t2_set[i]], t)) {
+		//	    t2_new[i] = t2_set[i];
+		//    }
+		//	std::cout << t2_new[i] << ", ";
+		//}
+		//std::cout << std::endl;
+		//for (int i = 0; i < t1_new.size(); i++) std::cout << t1_new[i] << ", ";
+		//std::cout << std::endl;
+		sort(t1_new.begin(), t1_new.end());
+		//for (int i = 0; i < t1_new.size(); i++) std::cout << t1_new[i] << ", ";
+		//std::cout << std::endl;
+		t1_new.erase(unique(t1_new.begin(), t1_new.end()), t1_new.end());
+		t1_new.erase(t1_new.begin());
+		//for (int i = 0; i < t1_new.size(); i++) std::cout << t1_new[i] << ", ";
+		//std::cout << std::endl;
         // TODO(Sylvia): Is this C locking scheme correct? (concurrency specs of C++)
         C_lock.lock();
-        C[t] = new_set; 
+        C[t] = t1_new; 
         C_lock.unlock();
-        for (auto it = C[t1].begin(); it != C[t1].end(); ++it) {
-            int i = *it;
-            point2D v = points[i];
-            if (visible2D(v, t)) {
-                C.at(t).insert(i);
-            }
-        }
-        for (auto it = C[t2].begin(); it != C[t2].end(); ++it) {
-            int i = *it;
-            point2D v = points[i];
-            if (C.at(t).find(i) == C.at(t).end() && visible2D(v, t)) {
-                C.at(t).insert(i);
-            }
-        }
         // delete t1 and add t
         H_lock.lock();
         H.erase(t1);
@@ -264,19 +294,20 @@ int convexHull2D(point2D* points, int size, point2D* output) {
     for (auto it = H.begin(); it != H.end(); ++it) {
         // C(t) <- {v in V | visible(v, t)}
         facet2D t = *it;
-        set<int> S_new;
+        vector<int> S_new;
         C[t] = S_new;
         // parallel foreach v in V
         for (int i = 3; i < size; i++) {
             point2D v = points[i];
             if (visible2D(v, t)) {
-                (C[t]).insert(i);
+                C[t].push_back(i);
             }
         }
+		sort(C[t].begin(), C[t].end());
         //cout << C[t].size() << std::endl;
     }
     // parallel for each t1,t2 sharing ridge r
-    for (auto it = H_ridges.begin(); it != H_ridges.end(); ++it) {
+    cilk_for (auto it = H_ridges.begin(); it != H_ridges.end(); ++it) {
         ridge2D r = it->first;
         facet2D t1 = (it->second).first;
         facet2D t2 = (it->second).second;
@@ -305,8 +336,7 @@ int main()
     cout << "Input size: " << size << std::endl;
     printPoints2D(points, size);
     point2D* hull = (point2D*)calloc(size, sizeof(point2D));
-    */
-    __cilkrts_set_param("nworkers", "4");
+    */    
     int size = 0;
     std::cin >> size;
     point2D *points = new point2D[size];
@@ -315,6 +345,7 @@ int main()
     }
     //printPoints2D(points, size);
     point2D *hull = new point2D[size];
+   
     auto start = std::chrono::high_resolution_clock::now();
     int hull_size = convexHull2D(points, size, hull);
     auto stop = std::chrono::high_resolution_clock::now();
