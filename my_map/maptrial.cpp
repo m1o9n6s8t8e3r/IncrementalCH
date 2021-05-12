@@ -7,6 +7,7 @@ typedef point2D ridge2D;
 
 int main()
 {
-    MultiMap M = MultiMap(13);
+    int size = 13;
+    MultiMap M = MultiMap(size);
     return 0;
 }
