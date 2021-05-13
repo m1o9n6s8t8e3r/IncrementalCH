@@ -9,13 +9,25 @@
 #include <algorithm>
 #include <cilk/cilk.h>
 #include <cilk/cilk_api.h>
+#include "my_map/MultiMap.h"
 using namespace std;
 
 #define point2D pair<int, int>
 #define facet2D pair<point2D, point2D>
 #define ridge2D point2D
 
-#define MAXSIZE 100000000
+#define MAXSIZE 200000000
+
+void print_table(MultiMap M, int capacity) {
+	for (int i = 0; i < capacity; i++) {
+		ridge2D k = M.get_key_by_idx(i);
+		facet2D v = M.get_value_by_idx(i);
+		std::cout << M.get_taken_by_idx(i) << ": ";
+		std::cout << '(' << k.first << ',' << k.second << ')' << '\t';
+		std::cout << "{(" << v.first.first << ',' << v.first.second << ") -> (";
+		std::cout << v.second.first << "," << v.second.second << ")}" << std::endl;
+	}
+}
 
 void par_quick_sort(std::vector<int>::iterator beg, std::vector<int>::iterator end);
 void par_quick_sort(std::vector<int>::iterator beg, std::vector<int>::iterator end) {
@@ -117,6 +129,7 @@ map<ridge2D, pair<facet2D, facet2D>> M;
 point2D BAD1 = {420420420, -420420420};
 point2D BAD2 = {-420420420, 420420420};
 facet2D BAD = {BAD1, BAD2};
+MultiMap MM = MultiMap(8096);
 /* InsertAndSet:
  *      Maintains a map R as a hash table
  *      using ridges as keys and values as ridge-facet pairs
@@ -147,7 +160,7 @@ facet2D GetValue(ridge2D r, facet2D t) {
     return ret;
 }
 
-void ProcessRidge(facet2D t1, ridge2D r, facet2D t2, point2D* points) {
+void ProcessRidge(facet2D t1, ridge2D r, facet2D t2, point2D* points, MultiMap& MM) {
     //cout << "Processing Ridge(t1,r,t2)" << std::endl;
     //cout << "t1=\t";
     //printFacet2D(t1);
@@ -158,8 +171,8 @@ void ProcessRidge(facet2D t1, ridge2D r, facet2D t2, point2D* points) {
         
     // If both are emtpy then this is a final facet!
     if (C[t1].size() == 0 && C[t2].size() == 0) {
-        //cout << "Final facets found" << std::endl;
-        return;
+        //cout << "Final facet found" << std::endl;
+		return;
     }
     // If just one is empty, this means just one is final.
     /*else if (C[t1].size() == 0 && C[t2].size() != 0) {
@@ -171,16 +184,20 @@ void ProcessRidge(facet2D t1, ridge2D r, facet2D t2, point2D* points) {
     // ABOVE IS OUTDATED DUE TO MAXSIZE UPDATE
     // If covered by the same point, then we delete them
     else if (minSet(C[t2]) == minSet(C[t1])) {
+        //cout << "Deleting facets" << std::endl;
         //DELETE t1 and t2 from H
         H_lock.lock();
+		//cout << "H locked" << std::endl;
         H.erase(t1);
         H.erase(t2);
-        //cout << "Deleting facets" << std::endl;
+		//cout << "erased" << std::endl;
         H_lock.unlock();
+		//cout << "unlocked" << std::endl;
     }
     // Changing order so that minSet(C[t1]) < minSet(C[t2])
     else if (minSet(C[t2]) < minSet(C[t1])) {
-        ProcessRidge(t2, r, t1, points);
+		//cout << "switching" << std::endl;
+        ProcessRidge(t2, r, t1, points, MM);
     }
     // Otherwise we know that -1 < minSet(C[t1]) < minSet(C[t2])
     else {
@@ -196,10 +213,10 @@ void ProcessRidge(facet2D t1, ridge2D r, facet2D t2, point2D* points) {
             t = facetSwap(t);
         }
         //Create C[t]
-		C_lock.lock();
+		//C_lock.lock();
 		vector<int> t1_set = C[t1];
 		vector<int> t2_set = C[t2];
-		C_lock.unlock();
+		//C_lock.unlock();
 		vector<int> t1_new = vector<int>();
 		t1_new.resize(t1_set.size() + t2_set.size());
 		std::fill(t1_new.begin(), t1_new.end(), -1);
@@ -252,33 +269,65 @@ void ProcessRidge(facet2D t1, ridge2D r, facet2D t2, point2D* points) {
         r1 = t.first;
         r2 = t.second;
         //task
+		//cout << "Spawning new tasks" << std::endl;
         {
             if (r1 == r) {
-                cilk_spawn ProcessRidge(t, r, t2, points);
+                cilk_spawn ProcessRidge(t, r, t2, points, MM);
             } else {
-				M_lock.lock();
+				/*M_lock.lock();
+				bool bleh = MM.insert_and_set(r1,t);
+				//print_table(MM, 60);
 				if (!InsertAndSet(r1, t)) {
                 	facet2D s = GetValue(r1, t);
+					if (bleh) {
+						cout << "AHHH" << std::endl;
+					}
+					facet2D ss = MM.get_value(r1, t);
+					if (ss != s) {
+						printFacet2D(ss);
+						printFacet2D(s);
+						cout <<"AHHH" << std::endl;
+					}
 					M_lock.unlock();
-                	cilk_spawn ProcessRidge(t, r1, s, points);
+                	cilk_spawn ProcessRidge(t, r1, s, points, MM);
 				} else {
 					M_lock.unlock();
-				}
-            }
+				}*/
+				if (!MM.insert_and_set(r1, t)) {
+					facet2D ss = MM.get_value(r1, t);
+					cilk_spawn ProcessRidge(t, r1, ss, points, MM);
+            	}
+			}
         }
         //task
+		//cout << "task2" << std::endl;
         {
             if (r2 == r) {
-                ProcessRidge(t, r, t2, points);
+                ProcessRidge(t, r, t2, points, MM);
             } else {
-				M_lock.lock();
+				/*M_lock.lock();
+				bool bleh = MM.insert_and_set(r2,t);
+				//print_table(MM, 60);
 				if (!InsertAndSet(r2, t)) {
                 	facet2D s = GetValue(r2, t);
+					if (bleh) {
+						cout << "AHHH" << std::endl;
+					}
+					facet2D ss = MM.get_value(r2, t);
+					if (ss != s) {
+						printFacet2D(ss);
+						printFacet2D(s);
+						cout <<"AHHH" << std::endl;
+					}
 					M_lock.unlock();
-                	ProcessRidge(t, r2, s, points);
+                	ProcessRidge(t, r2, s, points, MM);
             	} else {
 					M_lock.unlock();
-				}
+				}*/
+				if (!MM.insert_and_set(r2, t)) {
+					facet2D ss = MM.get_value(r2, t);
+					ProcessRidge(t, r2, ss, points, MM);
+            	}
 			}
         }
     }
@@ -296,8 +345,9 @@ int convexHull2D(point2D* points, int size, point2D* output) {
         }
         return size;
     }
-    //Initializing Hull 
-    for (int i = 0; i < 3; i++) {
+    //Initializing Hull
+	//TODO: Find good number 
+	for (int i = 0; i < 3; i++) {
         // Adopting convention that facets face outwards.
         if (visible2D(points[(i+2) % 3], {points[i % 3], points[(i+1) % 3]})) {
             H.insert({points[(i+1) % 3], points[i % 3]});
@@ -338,7 +388,8 @@ int convexHull2D(point2D* points, int size, point2D* output) {
         ridge2D r = it->first;
         facet2D t1 = (it->second).first;
         facet2D t2 = (it->second).second;
-        ProcessRidge(t1, r, t2, points);
+        ProcessRidge(t1, r, t2, points, MM);
+		cout << "here??" << std::endl;
     }
 
     cout << "Final Hull" << std::endl;
@@ -370,6 +421,7 @@ int main()
     for (int i = 0; i < size; i++) {
       std::cin >> points[i].first >> points[i].second;
     }
+	std::random_shuffle(points, points+size);
     //printPoints2D(points, size);
     point2D *hull = new point2D[size];
    
@@ -378,7 +430,9 @@ int main()
     auto stop = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
     std::cout << "Parallel execution on size " << size << " dataset took " << duration.count() << " microseconds" << std::endl;
-    //if (hull_size > 0) {
+    
+	std::cout << "Map size = " << MM.get_size() << std::endl;
+	//if (hull_size > 0) {
     //    cout << "Output size: " << hull_size << std::endl;
     //    printPoints2D(hull, hull_size);
     //}

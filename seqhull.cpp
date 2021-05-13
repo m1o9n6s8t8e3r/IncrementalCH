@@ -3,6 +3,7 @@
 #include <utility>
 #include <set>
 #include <map>
+#include <algorithm>
 #include "seqhull.h"
 using namespace std;
 #define point2D pair<int, int>
@@ -69,7 +70,8 @@ bool visible2D(point2D v, facet2D t) {
 }
 
 int convexHull2D(point2D* points, int size, point2D* output, bool debug) {
-    if (size < 0) {
+	std::random_shuffle(points, points+size);    
+	if (size < 0) {
         cout << "Size must be nonnegative" << std::endl;
         return -1;
     }

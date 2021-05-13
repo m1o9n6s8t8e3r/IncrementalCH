@@ -13,7 +13,7 @@ struct Entry {
 class MultiMap
 {
     private:
-    std::atomic<int> size_{0};
+    //std::atomic<int> size_{0};
     Entry* table_ = nullptr;
     int advance(int i) {return (i + 1) % capacity_;}
 
@@ -27,12 +27,13 @@ class MultiMap
     // Atomic
     bool insert_and_set(ridge2D key, facet2D t);
     facet2D get_value(ridge2D key, facet2D t);
-    int get_size() {return size_.load();}
+    //int get_size() {return size_.load();}
     int get_capacity() {return capacity_;}
     /*******************************************************************
     get_key_by_idx and get_value_by_idx do not have atomicity guarantees
     ********************************************************************/
     ridge2D get_key_by_idx(int i);
     facet2D get_value_by_idx(int i);
-
+	bool get_taken_by_idx(int i);
+	int get_size();
 };

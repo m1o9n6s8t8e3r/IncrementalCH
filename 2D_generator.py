@@ -6,7 +6,7 @@ def on_line(x, y, m ,b):
     else:
         return False;
 
-N = 300
+N = 30
 low = -3000
 high = 3000
 lines = set()
