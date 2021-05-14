@@ -223,7 +223,6 @@ void ProcessRidge(facet2D t1, ridge2D r, facet2D t2, point2D* points, MultiMap& 
         //cout << "branching" << std::endl;
         point2D p = points[minSet(C[t1])];
         facet2D t = {r, p};
-        //printFacet2D(t);
         point2D q = t1.first;
         if (p == q) {
             q = t1.second;
