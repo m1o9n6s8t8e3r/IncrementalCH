@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-n = 200
+n = 2500
 N = 0
 
 points = []

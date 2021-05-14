@@ -10,13 +10,23 @@
 #include <cilk/cilk.h>
 #include <cilk/cilk_api.h>
 #include "my_map/MultiMap.h"
+//#include "parallel_hashmap/phmap.h"
+
+#include <chrono>
 using namespace std;
+
+//using phmap::btree_set;
+//using phmap::btree_map;
+//using phmap::parallel_flat_hash_set;
+//using phmap::parallel_flat_hash_map;
 
 #define point2D pair<int, int>
 #define facet2D pair<point2D, point2D>
 #define ridge2D point2D
 
 #define MAXSIZE 200000000
+
+#define TIMING true
 
 void print_table(MultiMap M, int capacity) {
 	for (int i = 0; i < capacity; i++) {
@@ -119,17 +129,23 @@ bool visible2D(point2D v, facet2D t) {
 
 // Map from facets to point indices.
 map<facet2D, vector<int>> C;
+//parallel_flat_hash_map<facet2D, vector<int>> C;
 set<facet2D> H;
+//btree_set<facet2D> H = btree_set<facet2D>();
+//parallel_flat_hash_set<facet2D> H;
 std::mutex H_lock;
 std::mutex C_lock;
-std::mutex M_lock;
+//std::mutex M_lock;
 map<ridge2D, pair<facet2D, facet2D>> H_ridges;
 // TODO change M as described in paper.
 map<ridge2D, pair<facet2D, facet2D>> M;
 point2D BAD1 = {420420420, -420420420};
 point2D BAD2 = {-420420420, 420420420};
 facet2D BAD = {BAD1, BAD2};
-MultiMap MM = MultiMap(8096);
+MultiMap MM = MultiMap(4194304);
+int workernum = -1;
+int times[4];
+int branches = 0;
 /* InsertAndSet:
  *      Maintains a map R as a hash table
  *      using ridges as keys and values as ridge-facet pairs
@@ -168,7 +184,10 @@ void ProcessRidge(facet2D t1, ridge2D r, facet2D t2, point2D* points, MultiMap& 
     //printPoint2D(r);
     //cout << "t2=\t";
     //printFacet2D(t2);
-        
+    //if (__cilkrts_get_worker_number() != 0) {
+	//	workernum = __cilkrts_get_worker_number();
+	//	std::cout << "Thread: " << workernum << std::endl;
+	//}    
     // If both are emtpy then this is a final facet!
     if (C[t1].size() == 0 && C[t2].size() == 0) {
         //cout << "Final facet found" << std::endl;
@@ -213,11 +232,12 @@ void ProcessRidge(facet2D t1, ridge2D r, facet2D t2, point2D* points, MultiMap& 
             t = facetSwap(t);
         }
         //Create C[t]
-		//C_lock.lock();
 		vector<int> t1_set = C[t1];
 		vector<int> t2_set = C[t2];
-		//C_lock.unlock();
 		vector<int> t1_new = vector<int>();
+    	//if (TIMING) {
+		auto start = std::chrono::high_resolution_clock::now();
+		//}
 		t1_new.resize(t1_set.size() + t2_set.size());
 		std::fill(t1_new.begin(), t1_new.end(), -1);
 		//vector<int> t2_new = vector<int>();
@@ -252,11 +272,17 @@ void ProcessRidge(facet2D t1, ridge2D r, facet2D t2, point2D* points, MultiMap& 
 		//std::cout << std::endl;
 		t1_new.erase(unique(t1_new.begin(), t1_new.end()), t1_new.end());
 		t1_new.erase(t1_new.begin());
+    	if (TIMING) {
+			auto stop = std::chrono::high_resolution_clock::now();
+    		auto duration = std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
+			times[__cilkrts_get_worker_number()] += duration.count();
+		}
 		//for (int i = 0; i < t1_new.size(); i++) std::cout << t1_new[i] << ", ";
 		//std::cout << std::endl;
         // TODO(Sylvia): Is this C locking scheme correct? (concurrency specs of C++)
         C_lock.lock();
-        C[t] = t1_new; 
+        C[t] = t1_new;
+		branches++; 
         C_lock.unlock();
         // delete t1 and add t
         H_lock.lock();
@@ -272,7 +298,7 @@ void ProcessRidge(facet2D t1, ridge2D r, facet2D t2, point2D* points, MultiMap& 
 		//cout << "Spawning new tasks" << std::endl;
         {
             if (r1 == r) {
-                cilk_spawn ProcessRidge(t, r, t2, points, MM);
+                ProcessRidge(t, r, t2, points, MM);
             } else {
 				/*M_lock.lock();
 				bool bleh = MM.insert_and_set(r1,t);
@@ -326,7 +352,7 @@ void ProcessRidge(facet2D t1, ridge2D r, facet2D t2, point2D* points, MultiMap& 
 				}*/
 				if (!MM.insert_and_set(r2, t)) {
 					facet2D ss = MM.get_value(r2, t);
-					ProcessRidge(t, r2, ss, points, MM);
+					cilk_spawn ProcessRidge(t, r2, ss, points, MM);
             	}
 			}
         }
@@ -389,12 +415,11 @@ int convexHull2D(point2D* points, int size, point2D* output) {
         facet2D t1 = (it->second).first;
         facet2D t2 = (it->second).second;
         ProcessRidge(t1, r, t2, points, MM);
-		cout << "here??" << std::endl;
     }
 
-    cout << "Final Hull" << std::endl;
-    printFacetSet2D(H);
-    return size;
+    //cout << "Final Hull" << std::endl;
+    //printFacetSet2D(H);
+    return H.size();
 }
 
 int main()
@@ -430,8 +455,15 @@ int main()
     auto stop = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
     std::cout << "Parallel execution on size " << size << " dataset took " << duration.count() << " microseconds" << std::endl;
-    
+   	std::cout << "Hull Size = " << hull_size << std::endl; 
 	std::cout << "Map size = " << MM.get_size() << std::endl;
+	if (TIMING) {
+	std::cout << "Thread 0 Sorting time: " << times[0] << std::endl;
+	std::cout << "Thread 1 Sorting time: " << times[1] << std::endl;
+	std::cout << "Thread 2 Sorting time: " << times[2] << std::endl;
+	std::cout << "Thread 3 Sorting time: " << times[3] << std::endl;
+	std::cout << "Branches: " << branches / 2 << std::endl;
+	}
 	//if (hull_size > 0) {
     //    cout << "Output size: " << hull_size << std::endl;
     //    printPoints2D(hull, hull_size);
