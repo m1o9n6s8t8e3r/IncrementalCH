@@ -6,9 +6,9 @@ def on_line(x, y, m ,b):
     else:
         return False;
 
-N = 10000
-low = -1000
-high = 1000
+N = 30
+low = -3000
+high = 3000
 lines = set()
 vertical = set()
 points = np.zeros((N, 2), dtype=int)

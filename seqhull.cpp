@@ -3,6 +3,7 @@
 #include <utility>
 #include <set>
 #include <map>
+#include <algorithm>
 #include "seqhull.h"
 using namespace std;
 #define point2D pair<int, int>
@@ -69,7 +70,8 @@ bool visible2D(point2D v, facet2D t) {
 }
 
 int convexHull2D(point2D* points, int size, point2D* output, bool debug) {
-    if (size < 0) {
+	std::random_shuffle(points, points+size);    
+	if (size < 0) {
         cout << "Size must be nonnegative" << std::endl;
         return -1;
     }
@@ -113,7 +115,7 @@ int convexHull2D(point2D* points, int size, point2D* output, bool debug) {
         point2D p = points[i];
         C_inv.insert(pair<point2D, set<facet2D>>(p, {}));
     }
-    for (itr = H.begin(); itr != H.end(); itr++) {
+    for (itr = H.begin(); itr != H.end(); ++itr) {
         facet2D f = *itr;
         C.insert(pair<facet2D, set<point2D>>(f, {}));
         for (int i = 0; i < size; i++) {
@@ -155,14 +157,14 @@ int convexHull2D(point2D* points, int size, point2D* output, bool debug) {
             facet2D f1 = ridge_facets[r].first;
             if (H.find(f1) == H.end()) {
                 f1 = facetSwap(f1);
-                cout << "Whoops: vertex " << i << std::endl;
-                printFacet2D(f1);
+                //cout << "Whoops: vertex " << i << std::endl;
+                //printFacet2D(f1);
             }
             facet2D f2 = ridge_facets[r].second;
             if (H.find(f2) == H.end()) {
                 f2 = facetSwap(f2);
-                cout << "Whoops: vertex " << i << std::endl;
-                printFacet2D(f2);
+                //cout << "Whoops: vertex " << i << std::endl;
+                //printFacet2D(f2);
             }
             // Make f1 visible and f2 invisible from p
             if (!visible2D(p, f1)) {
@@ -172,7 +174,11 @@ int convexHull2D(point2D* points, int size, point2D* output, bool debug) {
                 f2 = swap;
             }
             facet2D new_f = {r, p};
-            if (visible2D(points[0], new_f)) {
+            point2D q = f1.first;
+            if (p == q) {
+                q = f1.second;
+            }
+            if (visible2D(q, new_f)) {
                 new_f = facetSwap(new_f);
             }
             // Update everything to include new facet and erase old one.
@@ -229,8 +235,8 @@ int convexHull2D(point2D* points, int size, point2D* output, bool debug) {
         }
     }
 
-    cout << "Final Hull" << std::endl;
-    printFacetSet2D(H);
+    //cout << "Final Hull" << std::endl;
+    //printFacetSet2D(H);
     return size;
 }
 
