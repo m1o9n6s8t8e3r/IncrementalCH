@@ -3,6 +3,7 @@
 #include <cilk/cilk.h>
 #include <algorithm>
 #include <vector>
+#include <chrono>
 
 bool print=false;
 
@@ -44,7 +45,7 @@ int main(){
     cilk_for (int x = 0; x< n; x++){A[x] = x / 3; }
     cilk_for (int x = 0; x< n; x++){a[x] = x / 3; }
 	std::random_shuffle(A.begin(), A.end());
-	std::random_shuffle(a, a+n);
+	//std::random_shuffle(a, a+n);
     std::cout << "Sorting " << n << " elements" << std::endl;
 	if (print) 
 		{
@@ -59,9 +60,14 @@ int main(){
 	}
 	std::cout << '}' << std::endl;
 		}
+	
+    auto start = std::chrono::high_resolution_clock::now();
     quick_sort(A.begin(), A.end());
-	quick_sort_arr(a, a + n);
-	std::cout << "Quicksort on " << n << " items succeeded." << std::endl;
+    auto stop = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
+	//quick_sort_arr(a, a + n);
+	//std::cout << "Quicksort on " << n << " items succeeded." << std::endl;
+    std::cout << "Quicksot on size " << n << " dataset took " << duration.count() << " microseconds" << std::endl;
 	if (print) 
 		{
 	std::cout << '{';

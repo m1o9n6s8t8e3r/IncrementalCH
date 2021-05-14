@@ -3,6 +3,7 @@
 #include <utility>
 #include <set>
 #include <map>
+#include <algorithm>
 #include "seqhull.h"
 using namespace std;
 #define point2D pair<int, int>
@@ -69,7 +70,8 @@ bool visible2D(point2D v, facet2D t) {
 }
 
 int convexHull2D(point2D* points, int size, point2D* output, bool debug) {
-    if (size < 0) {
+	std::random_shuffle(points, points+size);    
+	if (size < 0) {
         cout << "Size must be nonnegative" << std::endl;
         return -1;
     }
@@ -155,14 +157,14 @@ int convexHull2D(point2D* points, int size, point2D* output, bool debug) {
             facet2D f1 = ridge_facets[r].first;
             if (H.find(f1) == H.end()) {
                 f1 = facetSwap(f1);
-                cout << "Whoops: vertex " << i << std::endl;
-                printFacet2D(f1);
+                //cout << "Whoops: vertex " << i << std::endl;
+                //printFacet2D(f1);
             }
             facet2D f2 = ridge_facets[r].second;
             if (H.find(f2) == H.end()) {
                 f2 = facetSwap(f2);
-                cout << "Whoops: vertex " << i << std::endl;
-                printFacet2D(f2);
+                //cout << "Whoops: vertex " << i << std::endl;
+                //printFacet2D(f2);
             }
             // Make f1 visible and f2 invisible from p
             if (!visible2D(p, f1)) {
@@ -233,8 +235,8 @@ int convexHull2D(point2D* points, int size, point2D* output, bool debug) {
         }
     }
 
-    cout << "Final Hull" << std::endl;
-    printFacetSet2D(H);
+    //cout << "Final Hull" << std::endl;
+    //printFacetSet2D(H);
     return size;
 }
 
