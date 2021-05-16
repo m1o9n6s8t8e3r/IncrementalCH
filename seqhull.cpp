@@ -1,4 +1,9 @@
-//Two dimensional version
+/*************************************************************
+ *            Two Dimensional Convex Hull ********************
+ *************************************************************
+ * Authors: Isaac Browne (ibrowne@andrew.cmu.edu),
+            Sylvia Zhang (ziyuzhan@andrew.cmu.edu)
+ *************************************************************/
 #include <iostream>
 #include <utility>
 #include <set>
